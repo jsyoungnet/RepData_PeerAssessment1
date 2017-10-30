@@ -1,25 +1,173 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Reproduceable Research Project"
+author: "Jeff Young"
+date: "22 October 2017"
+output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lattice)
+```
 
-## Loading and preprocessing the data
+# Background
 
+It is now possible to collect a large amount of data about personal movement using activity monitoring devices such as a Fitbit, Nike Fuelband, or Jawbone Up. These type of devices are part of the “quantified self” movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. But these data remain under-utilized both because the raw data are hard to obtain and there is a lack of statistical methods and software for processing and interpreting the data.
 
-
-## What is mean total number of steps taken per day?
-
-
-
-## What is the average daily activity pattern?
-
-
-
-## Imputing missing values
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
 
 
+```{r include=FALSE}
+# load libraries
+library(lattice)
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+
+## Getting Data
+
+The data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip
+
+downloading this file and unzip'ing it yeilds activity.csv, a comma separated value file with headings:  
+
+```{r}
+
+setwd("/Users/jyoung/Developer/Learning_R/Coursera Class in Reproduceable Research")
+
+#load the data from the files placing NA for all non-values
+
+testing_data_raw <- read.csv('activity.csv', header = TRUE, na.strings = c("NA","NaN","","#DIV/0!"))
+
+head(testing_data_raw)
+```
+
+
+#### Data Manipulation
+
+The first step we take is to aggreate the data by the date field and plot a histogram of that data (showing the distribution of steps-per-day over the dataset)
+
+
+
+```{r}
+
+steps_per_day <- aggregate(testing_data_raw$steps, FUN=sum, by=list(testing_data_raw$date))
+
+hist(steps_per_day$x, plot=TRUE, xlab="Number of Steps", ylab="Days", main=paste("Histogram of Steps per day"))
+
+```
+
+We also calculate summary statistics on the steps_per_day object to show the mean and median number of steps taken in a day (just over 10,000):
+
+```{r}
+
+summary(steps_per_day)
+```
+
+And we need a time series plot of the average number of steps taken.  This task is somewhat ambiguous; given that we are asked for a time series plot we will assume that this means a plot of the average number of steps taken across all 5 minute sampling times for each day.  
+
+To display this plot we must first average the data using the *aggregate* function:
+
+```{r}
+five_minute_avg_steps <- aggregate(testing_data_raw$steps, FUN="mean", by=list(testing_data_raw$date))
+
+plot(five_minute_avg_steps$Group.1, five_minute_avg_steps$x)
+
+
+```
+
+And a time-series plot *plot.ts* will yeild a plot that shows the days in progression as a dataset:
+
+```{r}
+
+plot.ts(five_minute_avg_steps$Group.1, five_minute_avg_steps$x, xlab="Day", ylab="Average steps per 5 minute samples", xy.labels = FALSE, xy.lines=TRUE)
+
+```
+
+
+Now we'd like to know which is the busiest (most steps taken) time of the day and therefore, we need to aggregate the data based on the mean of the number of steps in each timeslot over all of the sample days.
+
+We have a lot of NA data in this dataframe and we'll set it to zero for the time being in order to aggregate by time-slots:
+
+```{r}
+
+na_removed_data <- testing_data_raw
+na_removed_data[is.na(na_removed_data)] <- 0
+
+```
+
+Now we can aggregate the data by the average of the 5 minute time-slots and plot it:
+
+```{r}
+
+five_minute_avg_per_day <- aggregate(na_removed_data$steps, FUN="mean", by=list(Interval = na_removed_data$interval))
+
+plot(five_minute_avg_per_day$Interval, five_minute_avg_per_day$x, xlab = "Five minute Interval", ylab = "average number of steps at time of day")
+
+```
+
+Finally we can see that the time of day when the subject takes the most steps (on average) is between 5:00 AM and 10:00 AM but we can retrieve the exact interval in time:
+
+```{r}
+
+five_minute_avg_per_day[which.max(five_minute_avg_per_day$x),]
+
+```
+
+So we can see that the time period in which the subject takes the most steps averaged over the 60 days of samples is 8:35 AM during which time he/she takes ~180 steps.
+
+####Filling in Data
+
+We now turn our attention to the NA values in our data and see if we can come up with a way to estimate data where we haven't recorded any.  
+
+We simple put the average value for the time-slice (derived from all other slices) into any of the data points where NA occurs:
+
+```{r}
+
+testing_data_raw_copy <- testing_data_raw
+
+testing_data_raw_copy[,"steps"] <- na_removed_data[,"steps"] + floor(is.na(testing_data_raw_copy[,"steps"])*five_minute_avg_per_day[,"x"])
+
+```
+
+To confirm that we were able to replace the NA values with a value equal to the five-minute average per day (over all days) we can compare the first few rows of the new table (testing_data_raw_copy) with the table containing averages (five_minute_avg_per_day).  We also introduce the *floor* function to take only the integer portion of the number we substitute as 'fractions of a step' won't make any sense in the data:
+
+```{r}
+head(testing_data_raw)
+head(testing_data_raw_copy)
+head(five_minute_avg_per_day)
+
+```
+
+To find out the day of the week for each sample, we use the *weekday* function and then insert columns of data to represent the day-of-the-week and whether that day is a week day or a weekend day (note that because the current *date* in the data is a factor, it must be treated specifically as a date by 'as.Date()):
+
+```{r}
+
+testing_data_raw_copy[,"day_of_week"] <- weekdays(as.Date(testing_data_raw_copy[,"date"]))
+
+testing_data_raw_copy[,"weekday"] <- is.element(testing_data_raw_copy[,"day_of_week"],list("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"))
+
+head(testing_data_raw_copy)
+
+split_by_day <- split(testing_data_raw_copy, testing_data_raw_copy$weekday)
+
+weekend_data <- split_by_day[[1]]
+weekday_data <- split_by_day[[2]]
+
+five_minute_avg_per_day_weekdays <- aggregate(weekday_data$steps, FUN = "mean", by=list(Interval = weekday_data$interval))
+
+five_minute_avg_per_day_weekends <- aggregate(weekend_data$steps, FUN = "mean", by=list(Interval = weekend_data$interval))
+
+par(mfrow=c(2,1))
+layout(matrix(c(1,1,1,1), 2, 2, byrow = TRUE), 
+  	widths=c(3,1), heights=c(1,2))
+
+plot(five_minute_avg_per_day_weekdays$Interval, five_minute_avg_per_day_weekdays$x, xlab = "Time of Day", ylab = "Average Steps", main = "Weekend Activity")
+plot(five_minute_avg_per_day_weekends$Interval, five_minute_avg_per_day_weekends$x, xlab = "Time of Day", ylab = "Average Steps", main = "Weekday Activity")
+
+```
+
+
+
+
+
